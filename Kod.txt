@@ -1,1 +1,110 @@
-# Wpisz kod
+# Wpisz kod tu jest kod z obsługą błędów
+' Klasa: AccessDatabase
+Option Explicit
+
+Private conn As Object
+Private dbPath As String
+
+' Konstruktor
+Public Sub Initialize(databasePath As String)
+    dbPath = databasePath
+    Set conn = CreateObject("ADODB.Connection")
+End Sub
+
+' Metoda do otwierania połączenia
+Public Sub OpenConnection()
+    conn.Open "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & dbPath & ";"
+End Sub
+
+' Metoda do zamykania połączenia
+Public Sub CloseConnection()
+    If Not conn Is Nothing Then
+        conn.Close
+        Set conn = Nothing
+    End If
+End Sub
+
+' Metoda do przenoszenia danych z Excela do Accessa
+Public Sub TransferData(sheetName As String, tableName As String)
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Sheets(sheetName)
+
+    Dim sql As String
+    Dim i As Long
+    Dim j As Long
+    Dim columnCount As Long
+    Dim value As Variant
+
+    ' Sprawdzenie, czy tabela istnieje
+    On Error Resume Next
+    conn.Execute "SELECT * FROM " & tableName & " WHERE 1=0" ' Sprawdzenie istnienia tabeli
+    If Err.Number <> 0 Then
+        MsgBox "Tabela '" & tableName & "' nie istnieje w bazie danych.", vbCritical
+        Exit Sub
+    End If
+    On Error GoTo 0
+
+    ' Tworzenie zapytania SQL do wstawiania danych
+    For i = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row ' Zakładamy, że dane zaczynają się od drugiego wiersza
+        sql = "INSERT INTO " & tableName & " ("
+
+        ' Dodaj kolumny
+        columnCount = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+        For j = 1 To columnCount
+            sql = sql & ws.Cells(1, j).Value & ", "
+        Next j
+
+        sql = Left(sql, Len(sql) - 2) & ") VALUES ("
+
+        ' Dodaj wartości z kontrolą danych
+        For j = 1 To columnCount
+            value = ws.Cells(i, j).Value
+            
+            ' Sprawdzenie, czy wartość jest pusta
+            If IsEmpty(value) Then
+                MsgBox "Wartość w wierszu " & i & ", kolumnie " & j & " jest pusta. Przerwano transfer.", vbExclamation
+                Exit Sub
+            End If
+            
+            ' Dodaj wartość do zapytania
+            sql = sql & "'" & Replace(value, "'", "''") & "', " ' Użycie Replace do zabezpieczenia przed apostrofami
+        Next j
+
+        sql = Left(sql, Len(sql) - 2) & ");"
+
+        ' Wykonaj zapytanie
+        On Error Resume Next
+        conn.Execute sql
+        If Err.Number <> 0 Then
+            MsgBox "Błąd podczas wstawiania danych w wierszu " & i & ": " & Err.Description, vbCritical
+            Err.Clear
+            Exit Sub
+        End If
+        On Error GoTo 0
+    Next i
+End Sub
+
+Do modułu kod 
+
+Sub TransferTableToAccess()
+    Dim db As AccessDatabase
+    Set db = New AccessDatabase
+
+    Dim dbPath As String
+    dbPath = "C:\ścieżka\do\pliku\TwojaBaza.accdb" ' Zmień na odpowiednią ścieżkę
+
+    ' Inicjalizacja i otwarcie połączenia
+    db.Initialize dbPath
+    db.OpenConnection
+
+    ' Przeniesienie danych z arkusza "Dane" do tabeli "NazwaTabeli"
+    db.TransferData "Dane", "NazwaTabeli" ' Zmień na odpowiednie nazwy
+
+    ' Zamknięcie połączenia
+    db.CloseConnection
+
+    ' Zwolnienie obiektu
+    Set db = Nothing
+
+    MsgBox "Dane zostały przeniesione do Accessa!"
+End Sub
